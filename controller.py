@@ -24,22 +24,42 @@ log = logging.getLogger("lightball")
 
 SERVICE = "0000fef1-0000-1000-8000-00805f9b34fb"
 # control-point characteristics in (primary, secondary) order. A packet >20 bytes is
-# split: first 20 bytes -> primary, remainder -> secondary (matches the app).
+# split: first 20 bytes -> primary, remainder -> secondary.
+# VERIFIED from the app's GATT: part1 -> handle 0x0011 = ...-8003, part2 -> 0x0014 = ...-8004.
 CP_PRIMARY = ["0000d011-d102-11e1-9b23-00025b00a5a5",   # newer GATT generation
-              "c4edc000-9daf-11e3-8004-00025b000b00"]   # older generation (our ball)
+              "c4edc000-9daf-11e3-8003-00025b000b00"]   # our ball: first 20 bytes here
 CP_SECONDARY = ["0000d012-d102-11e1-9b23-00025b00a5a5",
-                "c4edc000-9daf-11e3-8003-00025b000b00"]
+                "c4edc000-9daf-11e3-8004-00025b000b00"]  # our ball: remainder here
 
-# --- product specifics for the LED Ball (typeId 0xfc7b in the shipping app) ---
-LED_BALL_TYPEID = 0xFC7B
-MODE_STEADY = 2          # commondMode mode index that yields a solid (non-animated) color
+# --- product specifics, from decompiled Show app v1.50 (ColorData / Commands) ---
+# typeId is a bitmask; any value with the ball's bit set reaches it. The app sends
+# 0xFFFF (all products selected) for the ball - matching that.
+LED_BALL_TYPEID = 0xFFFF
 
-# Known palette indices (b6). Partial - extend as we map them.
-COLORS = {
-    "purple": 12,
-    "multicolor": 28,    # animated rainbow
+# Effect mode index (commonMode b5). FROM THE APP: 0=Close(off) 1=Steady 2=Blink ...
+# NOTE: Steady (solid) is mode 1. (Using 2 = Blink was the cause of the "blinking"!)
+MODE_CLOSE = 0
+MODE_STEADY = 1
+MODE_ON = 255            # commonMode(mode=255) = turn on; mode=0 (Close) = turn off
+MODES = {
+    "steady": 1, "blink": 2, "sparkle": 3, "instead": 4, "fade": 5, "rolling": 6,
+    "waves": 7, "fireworks": 8, "polar": 9, "color band": 10,
 }
-# Effect/mode names are still being mapped; expose raw indices meanwhile.
+
+# Full color palette (commonMode b6) - ColorData.getSTs() in the app.
+COLORS = {
+    "red": 0, "green": 1, "blue": 2, "orange": 3, "pink": 4, "aqua": 5, "gold": 6,
+    "fuchsia": 7, "lawn green": 8, "magenta": 9, "cyan": 10, "yellow": 11,
+    "purple": 12, "white": 13, "cold white": 14, "cool white": 15, "spring": 16,
+    "summer": 17, "autumn": 18, "winter": 19, "christmas": 20, "valentines": 21,
+    "independence": 22, "thanksgiving": 23, "st patricks": 24, "halloween": 25,
+    "sun": 26, "earth": 27, "multicolor": 28,
+}
+
+# Brightness is the 6th commonMode arg (level 0-4 -> "Level 1".."Level 5"); the wire
+# byte = 4 - level (so level 4 = wire 0 = brightest). Default level 2 = app's "Level 3".
+BRIGHT_DEFAULT = 2
+BRIGHT_MAX = 4           # level 4 -> wire byte 0 = max brightness (Level 5)
 
 
 class LightBall:
@@ -178,7 +198,17 @@ class LightBall:
             else:
                 await self._client.write_gatt_char(self._write, pkt, response=response)
 
-    async def _send_vendor(self, vendor, dest=cm.BROADCAST, times=2):
+    async def _select(self, times=2):
+        """Send the device-select handshake (sendSelect 0,0,0xFFFF) the way the app
+        does, so the ball accepts subsequent commands."""
+        for _ in range(times):
+            v = cm.select(txn=self._next_txn(), typeid=0xFFFF)
+            await self._send_packet(cm.data_block(v, cm.BROADCAST))
+            await asyncio.sleep(0.08)
+
+    async def _send_vendor(self, vendor, dest=cm.BROADCAST, times=2, do_select=True):
+        if do_select:
+            await self._select(times=2)        # handshake first
         for _ in range(times):
             await self._send_packet(cm.data_block(vendor, dest))
             await asyncio.sleep(0.12)
@@ -190,7 +220,7 @@ class LightBall:
                 await asyncio.sleep(2.0)
                 if self._client and self._client.is_connected:
                     try:
-                        v = cm._vendor(self._next_txn(), 0, 0xFFFF, 0xE, 0, 0, 0)
+                        v = cm.select(txn=self._next_txn(), typeid=0xFFFF)
                         await self._send_packet(cm.data_block(v, cm.BROADCAST))
                     except Exception:  # noqa: BLE001
                         pass
@@ -199,14 +229,20 @@ class LightBall:
 
     # --- high-level API ---------------------------------------------------
 
-    async def solid(self, color, dest=cm.BROADCAST):
-        """Set a steady (non-animated) solid color by palette index."""
-        v = cm.commond_mode(MODE_STEADY, color, 2, txn=self._next_txn(), typeid=self.typeid)
+    def _color_index(self, color):
+        return COLORS.get(color.lower(), 0) if isinstance(color, str) else int(color)
+
+    async def solid(self, color, brightness=BRIGHT_DEFAULT, dest=cm.BROADCAST):
+        """Steady (mode 1) solid color. `color` = name or index, brightness 0-4."""
+        v = cm.commond_mode(MODE_STEADY, self._color_index(color), brightness,
+                            txn=self._next_txn(), typeid=self.typeid)
         await self._send_vendor(v, dest, times=3)
 
-    async def set_mode(self, mode, color, speed=0, dest=cm.BROADCAST):
-        """Set a commondMode effect: mode index, palette color, speed."""
-        v = cm.commond_mode(mode, color, speed, txn=self._next_txn(), typeid=self.typeid)
+    async def set_mode(self, mode, color, brightness=BRIGHT_DEFAULT, dest=cm.BROADCAST):
+        """commonMode effect: mode (name or index), color (name or index), brightness 0-4."""
+        m = MODES.get(mode.lower(), 1) if isinstance(mode, str) else int(mode)
+        v = cm.commond_mode(m, self._color_index(color), brightness,
+                            txn=self._next_txn(), typeid=self.typeid)
         await self._send_vendor(v, dest, times=3)
 
     async def set_show(self, mode, color, dest=cm.BROADCAST):
@@ -215,10 +251,12 @@ class LightBall:
         await self._send_vendor(v, dest, times=3)
 
     async def power(self, on, dest=cm.BROADCAST):
-        """Standard CSRmesh Power model on/off (works without the vendor path)."""
-        msg = cm.power(cm.POWER_ON if on else cm.POWER_OFF, dest)
-        await self._send_packet(msg)
-        await self._send_packet(msg)
+        """On/off via the vendor path: commonMode mode=255 (on) / mode=0 Close (off).
+        The ball honors these (it ignores the standard CSRmesh Power model)."""
+        mode = MODE_ON if on else MODE_CLOSE
+        # app sends commonMode(mode, color=0, brightness=4) -> wire byte 0
+        v = cm.commond_mode(mode, 0, 4, txn=self._next_txn(), typeid=self.typeid)
+        await self._send_vendor(v, dest, times=3)
 
     async def brightness(self, level, dest=cm.BROADCAST):
         """Standard CSRmesh Light model brightness 0-255."""
@@ -238,13 +276,13 @@ async def _cli():
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("scan")
-    s = sub.add_parser("solid"); s.add_argument("color", type=lambda x: int(x, 0))
-    s = sub.add_parser("mode"); s.add_argument("mode", type=int); s.add_argument("color", type=int); s.add_argument("--speed", type=int, default=0)
+    s = sub.add_parser("solid"); s.add_argument("color"); s.add_argument("--brightness", type=int, default=BRIGHT_DEFAULT)
+    s = sub.add_parser("mode"); s.add_argument("mode"); s.add_argument("color"); s.add_argument("--brightness", type=int, default=BRIGHT_DEFAULT)
     s = sub.add_parser("show"); s.add_argument("mode", type=int); s.add_argument("color", type=int)
     s = sub.add_parser("brightness"); s.add_argument("level", type=lambda x: int(x, 0))
     for n in ("on", "off"):
         sub.add_parser(n)
-    s = sub.add_parser("hold"); s.add_argument("color", type=lambda x: int(x, 0)); s.add_argument("seconds", type=float, nargs="?", default=30.0)
+    s = sub.add_parser("hold"); s.add_argument("color"); s.add_argument("seconds", type=float, nargs="?", default=30.0)
     args = p.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -266,7 +304,7 @@ async def _cli():
         if args.cmd == "solid":
             await ball.solid(args.color)
         elif args.cmd == "mode":
-            await ball.set_mode(args.mode, args.color, args.speed)
+            await ball.set_mode(args.mode, args.color, args.brightness)
         elif args.cmd == "show":
             await ball.set_show(args.mode, args.color)
         elif args.cmd == "brightness":

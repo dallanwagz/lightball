@@ -53,19 +53,24 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 See `PI_SETUP.md` for full setup and the Home Assistant MQTT bridge.
 
-## Status
+## Status — working end to end ✅
 
-Working: protocol fully reversed and verified; Pi controller connects and drives the ball
-(power, brightness, solid color, modes). Open items:
+Reliable control confirmed live on a Raspberry Pi + USB BLE dongle: **on/off, brightness,
+all 29 solid colors, and the effect modes**, rock-steady. The controller decompiled from the
+exact shipping app (`com.tcdtech.ishowlight` v1.50) and its byte-for-byte command match
+resolved every earlier issue.
 
-- **Random "blink off"** while holding a solid color. Leading suspect: the **aged 2018 18650
-  battery browning out under LED load** (test on the charger) rather than anything in the
-  protocol — packets are byte-identical to the app's.
-- **Color palette mapping** is partial (purple=12, multicolor=28 known); needs a short capture
-  of each swatch to finish.
-- BLE link is finicky — the ball advertises intermittently with a **rotating private address**
-  (always discover by name `LAB…`, never a fixed MAC) and **very low TX power (~0.8 mW)**, so a
-  close, dedicated BLE host is recommended.
+What the long debugging chase actually was (all fixed — see `SURVEY.md`):
+- **Split-write order reversed** — part 1 must go to char `…-8003`, part 2 to `…-8004`
+  (we had them swapped, so every >20-byte command was ignored). This was the real blocker.
+- **Steady = mode 1** (mode 2 is *Blink* — that was the literal "blinking").
+- Brightness wire byte, the `sendSelect` handshake, full color/mode maps, on/off opcodes.
+- The "aged battery brown-out" theory was a red herring.
+
+Operational notes: the ball advertises intermittently with a **rotating private address**
+(always discover by name `LAB…`, never a fixed MAC) and has **very low TX power (~0.8 mW)**,
+so a close, dedicated BLE host (the Pi+dongle) is recommended; its onboard Pi 3 radio is
+unusable on this image (see `HARDWARE.md`).
 
 ## Notes / legal
 

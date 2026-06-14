@@ -13,3 +13,4 @@ jadx-*/
 # Android bug-report captures (contain personal device data; do not publish)
 *.zip
 btsnoop_hci.log*
+reapk/

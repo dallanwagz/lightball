@@ -194,6 +194,17 @@ def query_status(*, txn: int = 1, batch: int = 0, typeid: int = TYPE_ALL) -> byt
     return _vendor(txn, batch, typeid, 0x2, 0, 0, 0)
 
 
+def select(*, txn: int = 1, batch: int = 0, typeid: int = TYPE_ALL) -> bytes:
+    """sendSelect (Commands.java:163) - the device "select" handshake the app sends
+    (and repeats) so devices accept subsequent commands. Distinct layout: byte0's low
+    nibble is 0xE and there is NO second command byte.
+        [txn|0xE, batch, typeIdHi, typeIdLo, 0, 0, 0, 0, 0, 0]
+    The app calls sendSelect(0, 0, 0xFFFF)."""
+    f = (txn & 0x0F) << 4
+    return bytes([f | 0xE, batch & 0xFF, (typeid >> 8) & 0xFF, typeid & 0xFF,
+                  0, 0, 0, 0, 0, 0])
+
+
 def parse_packet(pkt: bytes, key: bytes = DEFAULT_KEY):
     """Decrypt a received MTL packet -> (seq, source, plaintext_payload, mic_ok).
     plaintext_payload = dest(2 LE) + opcode + params. Inverse of make_packet."""
