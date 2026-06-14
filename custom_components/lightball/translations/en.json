@@ -1,0 +1,19 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "confirm": {
+        "description": "Set up the Holiday Show Home LED Ball {name}?"
+      },
+      "user": {
+        "description": "Select an LED Ball discovered nearby.",
+        "data": { "name": "LED Ball" }
+      }
+    },
+    "abort": {
+      "not_supported": "This Bluetooth device is not an LED Ball.",
+      "no_devices_found": "No LED Balls are currently visible to Home Assistant Bluetooth. Make sure a Bluetooth adapter or proxy is in range and the ball is powered on.",
+      "already_configured": "This LED Ball is already configured."
+    }
+  }
+}

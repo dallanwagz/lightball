@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-Home Assistant MQTT bridge for the LED Ball.
+Home Assistant MQTT bridge for the Holiday Show Home LED Ball.
 
-Runs on the Pi next to the ball, holds a persistent BLE connection via controller.py,
-and exposes the ball to Home Assistant as an auto-discovered MQTT light (on/off,
-brightness, and an effect list of modes + solid colors). HA needs the MQTT integration
-pointed at the same broker; no custom component required.
+Runs on the Pi next to the ball, holds a persistent BLE connection (controller.py),
+and exposes the ball to Home Assistant as an auto-discovered MQTT light:
+  - on / off
+  - brightness (mapped to the ball's 5 levels)
+  - RGB color  (snapped to the ball's nearest palette color)
+  - effect     (the animation modes + the special/holiday palette colors)
 
-Env vars (or edit DEFAULTS):
-  MQTT_HOST (default 127.0.0.1)  MQTT_PORT (1883)  MQTT_USER  MQTT_PASS
-  BALL_ADDRESS (optional, skip scan)  BALL_SOURCE (default 0x8000)
+HA just needs the MQTT integration pointed at the same broker; no custom component.
 
-The ball is palette-based (no RGB), so "color" and "effect" are surfaced together as
-HA effects. Extend EFFECTS as we finish mapping color/mode indices (see SURVEY.md).
+Env vars (or edit DEFAULTS below):
+  MQTT_HOST (192.168.168.50)  MQTT_PORT (1883)  MQTT_USER  MQTT_PASS
+  BALL_ADAPTER (hci1)         BALL_ADDRESS (optional, else discover by name)
 """
 
 import asyncio
@@ -22,7 +23,8 @@ import os
 
 import paho.mqtt.client as mqtt
 
-from controller import LightBall, COLORS, MODE_STEADY
+import controller as ctl
+from controller import LightBall
 
 log = logging.getLogger("lightball.mqtt")
 
@@ -32,44 +34,58 @@ STATE_T = f"lightball/{DEVICE_ID}/state"
 CMD_T = f"lightball/{DEVICE_ID}/set"
 AVAIL_T = f"lightball/{DEVICE_ID}/availability"
 
-# effect name -> async controller action. Solid colors + animation modes.
-# NOTE: color/mode indices beyond these are still being mapped (SURVEY.md).
-EFFECTS = {
-    "Solid Purple":     lambda b: b.solid(COLORS["purple"]),
-    "Solid (MultiColor)": lambda b: b.set_mode(MODE_STEADY, COLORS["multicolor"]),
-    # animation modes captured (commondMode mode index, color index): names TBD
-    "Mode 1":  lambda b: b.set_mode(1, COLORS["purple"]),
-    "Mode 3":  lambda b: b.set_mode(3, COLORS["purple"]),
-    "Mode 4 (Waves)": lambda b: b.set_mode(4, COLORS["purple"]),
-    "Rainbow": lambda b: b.set_mode(4, COLORS["multicolor"]),
+# Approx RGB for the ball's 16 *solid* palette colors (index 0-15), for nearest-match.
+SOLID_RGB = {
+    0: (255, 0, 0), 1: (0, 255, 0), 2: (0, 0, 255), 3: (255, 140, 0), 4: (255, 105, 180),
+    5: (0, 200, 200), 6: (255, 215, 0), 7: (255, 0, 200), 8: (124, 252, 0),
+    9: (255, 0, 255), 10: (0, 255, 255), 11: (255, 255, 0), 12: (150, 0, 200),
+    13: (255, 255, 255), 14: (210, 225, 255), 15: (240, 255, 255),
 }
-EFFECT_LIST = list(EFFECTS.keys())
+# Animation modes (applied to the current color).
+MODE_EFFECTS = {f"Mode: {n.title()}": i for n, i in ctl.MODES.items()}
+# Special/holiday palette "colors" (16-28) surfaced as effects.
+SPECIAL_COLOR_EFFECTS = {
+    "Spring": 16, "Summer": 17, "Autumn": 18, "Winter": 19, "Christmas": 20,
+    "Valentine's": 21, "Independence": 22, "Thanksgiving": 23, "St. Patrick's": 24,
+    "Halloween": 25, "Sun": 26, "Earth": 27, "MultiColor": 28,
+}
+EFFECT_LIST = list(MODE_EFFECTS) + list(SPECIAL_COLOR_EFFECTS)
+
+# brightness: HA 0-255 -> ball level 0-4
+def ha_to_level(v):
+    return max(0, min(4, round(v / 255 * 4)))
+def level_to_ha(lvl):
+    return round(lvl / 4 * 255)
+
+def nearest_solid(r, g, b):
+    return min(SOLID_RGB, key=lambda i: sum((a - c) ** 2 for a, c in zip(SOLID_RGB[i], (r, g, b))))
 
 
 def discovery_payload():
     return {
-        "name": "LED Ball",
-        "unique_id": DEVICE_ID,
-        "schema": "json",
-        "command_topic": CMD_T,
-        "state_topic": STATE_T,
-        "availability_topic": AVAIL_T,
-        "brightness": True,
-        "brightness_scale": 255,
-        "effect": True,
-        "effect_list": EFFECT_LIST,
-        "device": {"identifiers": [DEVICE_ID], "name": "Holiday Showtime LED Ball",
-                   "manufacturer": "TCD Tech", "model": "LED Ball (CSRmesh)"},
+        "name": "LED Ball", "unique_id": DEVICE_ID, "schema": "json",
+        "command_topic": CMD_T, "state_topic": STATE_T, "availability_topic": AVAIL_T,
+        "brightness": True, "brightness_scale": 255,
+        "supported_color_modes": ["rgb"],
+        "effect": True, "effect_list": EFFECT_LIST,
+        "device": {"identifiers": [DEVICE_ID], "name": "Holiday Show Home LED Ball",
+                   "manufacturer": "Willis Electric / Kupoint", "model": "AL96 (CSRmesh)"},
     }
 
 
 class Bridge:
     def __init__(self):
         self.ball = LightBall(address=os.environ.get("BALL_ADDRESS"),
-                              source=int(os.environ.get("BALL_SOURCE", "0x8000"), 0),
+                              adapter=os.environ.get("BALL_ADAPTER", "hci1"),
                               keepalive=True)
         self.loop = None
-        self.state = {"state": "OFF", "brightness": 255, "effect": EFFECT_LIST[0]}
+        # tracked state
+        self.on = False
+        self.color = 0          # palette index
+        self.mode = ctl.MODE_STEADY
+        self.level = ctl.BRIGHT_DEFAULT
+        self.rgb = (255, 0, 0)
+        self.effect = "Mode: Steady"
         self.mqtt = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="lightball-bridge")
         u, pw = os.environ.get("MQTT_USER"), os.environ.get("MQTT_PASS")
         if u:
@@ -78,12 +94,18 @@ class Bridge:
         self.mqtt.on_connect = self._on_connect
         self.mqtt.on_message = self._on_message
 
+    def _publish_state(self):
+        st = {"state": "ON" if self.on else "OFF", "brightness": level_to_ha(self.level),
+              "color_mode": "rgb", "color": {"r": self.rgb[0], "g": self.rgb[1], "b": self.rgb[2]},
+              "effect": self.effect}
+        self.mqtt.publish(STATE_T, json.dumps(st), retain=True)
+
     def _on_connect(self, client, *_):
         log.info("MQTT connected; publishing discovery")
         client.publish(DISCO, json.dumps(discovery_payload()), retain=True)
         client.publish(AVAIL_T, "online", retain=True)
         client.subscribe(CMD_T)
-        client.publish(STATE_T, json.dumps(self.state), retain=True)
+        self._publish_state()
 
     def _on_message(self, client, userdata, msg):
         try:
@@ -91,34 +113,44 @@ class Bridge:
         except ValueError:
             return
         log.info("cmd: %s", cmd)
-        # schedule the async handler on the asyncio loop
         asyncio.run_coroutine_threadsafe(self._apply(cmd), self.loop)
 
     async def _apply(self, cmd):
         try:
-            if "state" in cmd:
-                self.state["state"] = cmd["state"]
-                if cmd["state"] == "OFF":
-                    await self.ball.power(False)
-                else:
-                    await self.ball.power(True)
+            if cmd.get("state") == "OFF":
+                self.on = False
+                await self.ball.power(False)
+                self._publish_state(); return
+            # any other command implies ON
             if "brightness" in cmd:
-                self.state["brightness"] = cmd["brightness"]
-                await self.ball.brightness(cmd["brightness"])
-            if "effect" in cmd and cmd["effect"] in EFFECTS:
-                self.state["effect"] = cmd["effect"]
-                self.state["state"] = "ON"
-                await EFFECTS[cmd["effect"]](self.ball)
+                self.level = ha_to_level(cmd["brightness"])
+            if "color" in cmd:
+                c = cmd["color"]; self.rgb = (c["r"], c["g"], c["b"])
+                self.color = nearest_solid(*self.rgb); self.mode = ctl.MODE_STEADY
+                self.effect = "Mode: Steady"
+            if "effect" in cmd:
+                e = cmd["effect"]; self.effect = e
+                if e in MODE_EFFECTS:
+                    self.mode = MODE_EFFECTS[e]
+                elif e in SPECIAL_COLOR_EFFECTS:
+                    self.color = SPECIAL_COLOR_EFFECTS[e]; self.mode = ctl.MODE_STEADY
+            # ensure on, then apply current mode+color+brightness
+            if not self.on:
+                await self.ball.power(True)
+                self.on = True
+                await asyncio.sleep(0.3)
+            await self.ball.set_mode(self.mode, self.color, self.level)
         except Exception as e:  # noqa: BLE001
             log.error("apply failed: %s", e)
-        self.mqtt.publish(STATE_T, json.dumps(self.state), retain=True)
+        self._publish_state()
 
     async def run(self):
         self.loop = asyncio.get_event_loop()
         log.info("connecting to ball...")
         await self.ball.connect()
-        host = os.environ.get("MQTT_HOST", "127.0.0.1")
+        host = os.environ.get("MQTT_HOST", "192.168.168.50")
         port = int(os.environ.get("MQTT_PORT", "1883"))
+        log.info("connecting MQTT %s:%d", host, port)
         self.mqtt.connect_async(host, port)
         self.mqtt.loop_start()
         try:

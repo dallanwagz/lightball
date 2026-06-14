@@ -1,0 +1,16 @@
+{
+  "domain": "lightball",
+  "name": "Holiday Show Home LED Ball",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/dallanwagz/lightball",
+  "issue_tracker": "https://github.com/dallanwagz/lightball/issues",
+  "codeowners": ["@dallanwagz"],
+  "iot_class": "local_polling",
+  "dependencies": ["bluetooth_adapters"],
+  "requirements": ["bleak-retry-connector>=3.5.0"],
+  "bluetooth": [
+    { "service_uuid": "0000fef1-0000-1000-8000-00805f9b34fb" },
+    { "local_name": "LAB*" }
+  ]
+}

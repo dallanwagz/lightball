@@ -27,6 +27,14 @@ committed — they're third-party/copyrighted and contain personal device data.)
   Power/Light models.
 - **Confirmed bidirectional** — the ball decrypts our packets and replies (we decrypt those).
 
+## Home Assistant
+
+Two ways to drive it from HA (see `HA_INTEGRATION.md` and `PI_SETUP.md`):
+
+- **Native integration via Bluetooth proxy (recommended):** `custom_components/lightball/`
+  — a real HA light entity that works through an ESPHome BT proxy near the ball. No Pi/MQTT.
+- **MQTT bridge:** `mqtt_bridge.py` on a Pi + USB dongle near the ball, bridged to HA's broker.
+
 ## Repo layout
 
 | File | Purpose |
