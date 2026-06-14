@@ -66,6 +66,14 @@ def power_payload(on: bool, txn: int) -> bytes:
     return _data_block(_vendor(txn, 0x3, MODE_ON if on else MODE_CLOSE, 0, 0))
 
 
+def show_payload(show_sel: int, txn: int, slot: int = 1) -> bytes:
+    """showView (animated preset): cmd nibble 0xA, byte5=slot(1-3), byte6=show index."""
+    f = (txn & 0x0F) << 4
+    v = bytes([f | 0x3, 0x00, (TYPEID >> 8) & 0xFF, TYPEID & 0xFF,
+               f | 0xA, slot & 0xFF, show_sel & 0xFF, 0, 0, 0])
+    return _data_block(v)
+
+
 def split_writes(packet: bytes) -> list[tuple[str, bytes]]:
     """Return the GATT writes for a packet: >20 bytes splits across CP1 then CP2."""
     if len(packet) > 20:

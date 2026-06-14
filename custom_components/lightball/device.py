@@ -87,6 +87,16 @@ class LightBallDevice:
             payloads.append(csrmesh.common_mode_payload(mode, color, level, self._next_txn()))
         await self._send_payloads(payloads)
 
+    async def set_show(self, show_sel: int, *, turn_on: bool = True) -> None:
+        """Activate an animated 'show' preset via showView (slot 1)."""
+        payloads = [csrmesh.select_payload(self._next_txn()),
+                    csrmesh.select_payload(self._next_txn())]
+        if turn_on:
+            payloads.append(csrmesh.power_payload(True, self._next_txn()))
+        for _ in range(2):
+            payloads.append(csrmesh.show_payload(show_sel, self._next_txn()))
+        await self._send_payloads(payloads)
+
     async def turn_off(self) -> None:
         payloads = [csrmesh.select_payload(self._next_txn())]
         for _ in range(2):

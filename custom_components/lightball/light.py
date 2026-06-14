@@ -21,8 +21,9 @@ from .const import (
     EFFECT_LIST,
     MODE_STEADY,
     MODES,
+    SEASONAL_COLOR_EFFECTS,
+    SHOW_EFFECTS,
     SOLID_RGB,
-    SPECIAL_COLOR_EFFECTS,
 )
 from .device import LightBallDevice
 
@@ -80,6 +81,7 @@ class LightBallLight(LightEntity):
         return self._device.available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        show: int | None = None
         if ATTR_BRIGHTNESS in kwargs:
             self._level = _ha_to_level(kwargs[ATTR_BRIGHTNESS])
             self._attr_brightness = kwargs[ATTR_BRIGHTNESS]
@@ -91,13 +93,18 @@ class LightBallLight(LightEntity):
         if ATTR_EFFECT in kwargs:
             effect = kwargs[ATTR_EFFECT]
             self._attr_effect = effect
-            if effect in MODES:
+            if effect in MODES:                       # animation mode on current color
                 self._mode = MODES[effect]
-            elif effect in SPECIAL_COLOR_EFFECTS:
-                self._color = SPECIAL_COLOR_EFFECTS[effect]
+            elif effect in SEASONAL_COLOR_EFFECTS:    # preset palette color, steady
+                self._color = SEASONAL_COLOR_EFFECTS[effect]
                 self._mode = MODE_STEADY
+            elif effect in SHOW_EFFECTS:              # animated 'show' preset (showView)
+                show = SHOW_EFFECTS[effect]
 
-        await self._device.set_state(self._mode, self._color, self._level, turn_on=True)
+        if show is not None:
+            await self._device.set_show(show, turn_on=True)
+        else:
+            await self._device.set_state(self._mode, self._color, self._level, turn_on=True)
         self._attr_is_on = True
         self.async_write_ha_state()
 

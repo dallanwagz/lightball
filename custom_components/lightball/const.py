@@ -44,11 +44,19 @@ SOLID_RGB = {
     9: (255, 0, 255), 10: (0, 255, 255), 11: (255, 255, 0), 12: (150, 0, 200),
     13: (255, 255, 255), 14: (210, 225, 255), 15: (240, 255, 255),
 }
-# Special / holiday palette colors (16-28) surfaced as effects.
-SPECIAL_COLOR_EFFECTS = {COLOR_NAMES[i]: i for i in range(16, 29)}
+# "Shows" = animated presets, sent via showView (byte5=slot 1-3, byte6=show index).
+# Order is ColorData.getShowText() in the app.
+SHOW_EFFECTS = {
+    "Christmas": 0, "Valentine's": 1, "Independence": 2, "Thanksgiving": 3,
+    "St. Patrick's": 4, "Halloween": 5, "MultiColor": 6,
+}
+# Seasonal preset color schemes = genuine commonMode palette colors (not shows).
+SEASONAL_COLOR_EFFECTS = {
+    "Spring": 16, "Summer": 17, "Autumn": 18, "Winter": 19, "Sun": 26, "Earth": 27,
+}
 
-# Effect list = animation modes + special palette colors.
-EFFECT_LIST = list(MODES) + list(SPECIAL_COLOR_EFFECTS)
+# Effect list = animation modes + shows + seasonal color presets.
+EFFECT_LIST = list(MODES) + list(SHOW_EFFECTS) + list(SEASONAL_COLOR_EFFECTS)
 
 # brightness: ball levels 0-4 (wire byte = 4 - level); HA 0-255 maps onto these.
 BRIGHT_DEFAULT = 2
