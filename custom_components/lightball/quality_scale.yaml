@@ -1,0 +1,43 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration registers no custom service actions.
+  appropriate-polling:
+    status: exempt
+    comment: >-
+      The ball offers no state readback and is controlled optimistically; there is
+      nothing to poll. Availability is pushed from Bluetooth advertisements.
+  brands:
+    status: todo
+    comment: Logo/icon PR to home-assistant/brands pending.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency:
+    status: todo
+    comment: lightball-ble is open source in this repo; PyPI publish pending before core submission.
+  docs-actions:
+    status: exempt
+    comment: No custom service actions.
+  docs-high-level-description:
+    status: todo
+    comment: home-assistant.io documentation PR pending.
+  docs-installation-instructions:
+    status: todo
+    comment: home-assistant.io documentation PR pending.
+  docs-removal-instructions:
+    status: todo
+    comment: home-assistant.io documentation PR pending.
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure:
+    status: exempt
+    comment: >-
+      Presence is confirmed via Bluetooth discovery (only currently-advertising
+      balls are offered). The device exposes no readback and connecting eagerly
+      during the flow is unreliable on this hardware.
+  test-before-setup: done
+  unique-config-entry: done
