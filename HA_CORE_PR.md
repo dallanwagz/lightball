@@ -7,10 +7,11 @@ manifest); this branch is what would be copied into `homeassistant/components/li
 ## What was done
 
 **Architecture**
-- Extracted all protocol + BLE code into a standalone library, **`lightball-ble`**
-  (`lib/`), published-shaped with its own `pyproject.toml` and tests. The
-  integration is now thin HA glue. (Satisfies `dependency-transparency` once the
-  library is published to PyPI.)
+- Extracted all protocol + BLE code into a standalone library, **`lightball-ble`**,
+  now its own public repo: https://github.com/dallanwagz/lightball-ble (CI +
+  PyPI trusted-publishing workflows, 100% test coverage). The integration is now
+  thin HA glue. (`dependency-transparency` is satisfied once that repo's `0.1.0`
+  is published to PyPI.) The nested `lib/` here mirrors it for local test runs.
 - `entry.runtime_data` (typed `LightBallConfigEntry = ConfigEntry[LightBallDevice]`)
   instead of `hass.data`. (`runtime-data`)
 - `__init__.py` raises `ConfigEntryNotReady` when the ball isn't visible. (`test-before-setup`)
@@ -50,9 +51,11 @@ intentional.
 
 ## Remaining before opening the PR (external, can't be done in-repo)
 
-1. **Publish `lightball-ble` to PyPI** and pin the exact version in `manifest.json`
-   `requirements`. (Until then this branch won't load via HACS — that's why it's
-   not on `main`.)
+1. **Publish `lightball-ble` to PyPI** (repo ready at
+   https://github.com/dallanwagz/lightball-ble — configure a PyPI trusted
+   publisher, then cut a GitHub Release and the `publish.yml` workflow uploads
+   it) and pin the exact version in `manifest.json` `requirements`. (Until then
+   this branch won't load via HACS — that's why it's not on `main`.)
 2. **Remove the `version` key** from `manifest.json` (forbidden in core; required
    for HACS, hence still present on this branch).
 3. **Add brand assets** (icon + logo) via a PR to `home-assistant/brands`. (`brands`)
