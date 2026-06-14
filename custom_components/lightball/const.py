@@ -51,9 +51,12 @@ SHOW_EFFECTS = {
     "St. Patrick's": 4, "Halloween": 5, "MultiColor": 6,
 }
 # Seasonal preset color schemes = genuine commonMode palette colors (not shows).
+# They are multi-color palettes; pairing them with a dynamic mode (Fade) makes the
+# ball actively transition through the scheme instead of drifting very slowly.
 SEASONAL_COLOR_EFFECTS = {
     "Spring": 16, "Summer": 17, "Autumn": 18, "Winter": 19, "Sun": 26, "Earth": 27,
 }
+SEASONAL_MODE = 5  # Fade
 
 # Effect list = animation modes + shows + seasonal color presets.
 EFFECT_LIST = list(MODES) + list(SHOW_EFFECTS) + list(SEASONAL_COLOR_EFFECTS)

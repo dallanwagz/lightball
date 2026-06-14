@@ -22,6 +22,7 @@ from .const import (
     MODE_STEADY,
     MODES,
     SEASONAL_COLOR_EFFECTS,
+    SEASONAL_MODE,
     SHOW_EFFECTS,
     SOLID_RGB,
 )
@@ -95,9 +96,9 @@ class LightBallLight(LightEntity):
             self._attr_effect = effect
             if effect in MODES:                       # animation mode on current color
                 self._mode = MODES[effect]
-            elif effect in SEASONAL_COLOR_EFFECTS:    # preset palette color, steady
+            elif effect in SEASONAL_COLOR_EFFECTS:    # multi-color palette, fade through it
                 self._color = SEASONAL_COLOR_EFFECTS[effect]
-                self._mode = MODE_STEADY
+                self._mode = SEASONAL_MODE
             elif effect in SHOW_EFFECTS:              # animated 'show' preset (showView)
                 show = SHOW_EFFECTS[effect]
 

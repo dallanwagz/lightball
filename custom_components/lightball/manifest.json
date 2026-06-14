@@ -1,7 +1,7 @@
 {
   "domain": "lightball",
   "name": "Holiday Show Home LED Ball",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "config_flow": true,
   "documentation": "https://github.com/dallanwagz/lightball",
   "issue_tracker": "https://github.com/dallanwagz/lightball/issues",
