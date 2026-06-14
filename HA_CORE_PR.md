@@ -49,21 +49,29 @@ device wrapper resolves the current `BLEDevice` by name through
 place the integration departs from the address-keyed BLE convention, and it is
 intentional.
 
-## Remaining before opening the PR (external, can't be done in-repo)
+## Mechanicals already done in-repo
 
-1. **Publish `lightball-ble` to PyPI** (repo ready at
-   https://github.com/dallanwagz/lightball-ble — configure a PyPI trusted
-   publisher, then cut a GitHub Release and the `publish.yml` workflow uploads
-   it) and pin the exact version in `manifest.json` `requirements`. (Until then
-   this branch won't load via HACS — that's why it's not on `main`.)
-2. **Remove the `version` key** from `manifest.json` (forbidden in core; required
-   for HACS, hence still present on this branch).
-3. **Add brand assets** (icon + logo) via a PR to `home-assistant/brands`. (`brands`)
-4. **Write documentation** at `home-assistant.io` (high-level description,
+- **`lightball-ble` is published to PyPI** (`0.1.0`) from
+  https://github.com/dallanwagz/lightball-ble. The integration tests pass against
+  the real PyPI package, satisfying `dependency-transparency`.
+- **Brand assets generated** at `brands/core_integrations/lightball/`
+  (icon + logo, 1x/2x) ready to drop into a `home-assistant/brands` PR — see
+  `brands/README.md`.
+- **`script/prep_core_pr.sh`** stages everything into a core checkout: copies the
+  integration to `homeassistant/components/lightball/`, **strips the `version`
+  key** and sorts the manifest, and copies the tests to
+  `tests/components/lightball/` rewriting the import root and swapping the
+  custom-component test shim for core fixtures. Verified to produce a compilable,
+  correctly-ordered tree.
+
+## Remaining (must happen in their respective external repos)
+
+1. **Open the `home-assistant/brands` PR** with the generated assets.
+2. **Write documentation** at `home-assistant.io` (high-level description,
    installation, removal). (`docs-*`)
-5. Run `python3 -m script.hassfest` inside a core checkout to regenerate
-   `requirements_all.txt` / `CODEOWNERS`, and move the tests to
-   `tests/components/lightball/`.
+3. In a core checkout: run `./script/prep_core_pr.sh /path/to/core`, then
+   `python3 -m script.hassfest` (regenerates `requirements_all.txt` / `CODEOWNERS`),
+   then `pytest tests/components/lightball`, and open the core PR.
 
 ## Running the tests
 
