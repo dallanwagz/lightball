@@ -1,0 +1,21 @@
+[Unit]
+Description=Holiday Showtime LED Ball -> Home Assistant MQTT bridge
+After=bluetooth.target network-online.target
+Wants=bluetooth.target network-online.target
+
+[Service]
+Type=simple
+# adjust path/user to your install
+WorkingDirectory=/home/pi/lightball
+ExecStart=/home/pi/lightball/.venv/bin/python /home/pi/lightball/mqtt_bridge.py
+Environment=MQTT_HOST=127.0.0.1
+Environment=MQTT_PORT=1883
+# Environment=MQTT_USER=homeassistant
+# Environment=MQTT_PASS=changeme
+# Environment=BALL_ADDRESS=AA:BB:CC:DD:EE:FF
+Restart=always
+RestartSec=5
+User=pi
+
+[Install]
+WantedBy=multi-user.target

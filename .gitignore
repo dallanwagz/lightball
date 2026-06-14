@@ -1,0 +1,15 @@
+# local env / caches
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.lightball_state.json
+
+# third-party app binaries & decompiled sources (copyrighted; kept locally only)
+*.apk
+jadx-*/
+*_source_from_JADX*/
+
+# Android bug-report captures (contain personal device data; do not publish)
+*.zip
+btsnoop_hci.log*
