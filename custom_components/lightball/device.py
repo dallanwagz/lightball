@@ -72,9 +72,10 @@ class LightBallDevice:
     def _connection_target(self) -> tuple[BLEDevice, str] | None:
         """The (BLEDevice, name) to connect to in order to reach this ball.
 
-        Device-class balls connect to themselves; a controller-class ball is reached
-        through a visible device-class peer (falling back to a direct connection only
-        if no peer is available).
+        Device-class balls connect to themselves. A controller-class ball is reached
+        only through a visible device-class peer; if none is visible we refuse rather
+        than connect directly, because a direct connection to a controller-class ball
+        makes it hijack the whole mesh.
         """
         visible = self._visible()
         if not self.needs_bridge:
@@ -83,8 +84,7 @@ class LightBallDevice:
         for peer_name, dev in visible.items():
             if peer_name != self.name and _is_device_class(_device_id_from_name(peer_name)):
                 return (dev, peer_name)
-        dev = visible.get(self.name)  # no peer: fall back to a direct connection
-        return (dev, self.name) if dev else None
+        return None  # controller-class with no device-class peer: never connect directly
 
     def _client_for_current_device(self) -> LightBall:
         """Return a client bound to the right connection target for this ball."""
