@@ -63,36 +63,47 @@ class LightBall:
                 await client.disconnect()
 
     async def set_state(
-        self, mode: int, color: int, level: int, *, turn_on: bool = True
+        self,
+        mode: int,
+        color: int,
+        level: int,
+        *,
+        turn_on: bool = True,
+        dest: int = protocol.BROADCAST,
     ) -> None:
-        """Select handshake -> (optional) power on -> commonMode(mode, color, level)."""
+        """Select handshake -> (optional) power on -> commonMode(mode, color, level).
+
+        ``dest`` addresses a single ball (0 = broadcast to all).
+        """
         payloads = [
             protocol.select_payload(self._next_txn()),
             protocol.select_payload(self._next_txn()),
         ]
         if turn_on:
-            payloads.append(protocol.power_payload(True, self._next_txn()))
+            payloads.append(protocol.power_payload(True, self._next_txn(), dest))
         for _ in range(2):  # BLE is lossy; send the command twice
             payloads.append(
-                protocol.common_mode_payload(mode, color, level, self._next_txn())
+                protocol.common_mode_payload(mode, color, level, self._next_txn(), dest)
             )
         await self._send(payloads)
 
-    async def set_show(self, show_sel: int, *, turn_on: bool = True) -> None:
+    async def set_show(
+        self, show_sel: int, *, turn_on: bool = True, dest: int = protocol.BROADCAST
+    ) -> None:
         """Activate an animated 'show' preset via showView (slot 1)."""
         payloads = [
             protocol.select_payload(self._next_txn()),
             protocol.select_payload(self._next_txn()),
         ]
         if turn_on:
-            payloads.append(protocol.power_payload(True, self._next_txn()))
+            payloads.append(protocol.power_payload(True, self._next_txn(), dest))
         for _ in range(2):
-            payloads.append(protocol.show_payload(show_sel, self._next_txn()))
+            payloads.append(protocol.show_payload(show_sel, self._next_txn(), dest=dest))
         await self._send(payloads)
 
-    async def turn_off(self) -> None:
+    async def turn_off(self, *, dest: int = protocol.BROADCAST) -> None:
         """Turn the ball off."""
         payloads = [protocol.select_payload(self._next_txn())]
         for _ in range(2):
-            payloads.append(protocol.power_payload(False, self._next_txn()))
+            payloads.append(protocol.power_payload(False, self._next_txn(), dest))
         await self._send(payloads)

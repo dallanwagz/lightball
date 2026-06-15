@@ -51,7 +51,7 @@ async def test_turn_on_color(
 ) -> None:
     """An RGB colour maps to the nearest solid palette index, steady mode."""
     await _turn_on(hass, **{ATTR_RGB_COLOR: (255, 0, 0)})
-    mock_client.set_state.assert_awaited_once_with(1, 0, 2, turn_on=True)
+    mock_client.set_state.assert_awaited_once_with(1, 0, 2, turn_on=True, dest=0xEB11)
     assert hass.states.get(ENTITY).state == STATE_ON
 
 
@@ -60,7 +60,7 @@ async def test_turn_on_brightness(
 ) -> None:
     """HA brightness maps onto the ball's 0-4 level."""
     await _turn_on(hass, **{ATTR_BRIGHTNESS: 255})
-    mock_client.set_state.assert_awaited_once_with(1, 0, 4, turn_on=True)
+    mock_client.set_state.assert_awaited_once_with(1, 0, 4, turn_on=True, dest=0xEB11)
 
 
 async def test_turn_on_animation_effect(
@@ -68,7 +68,7 @@ async def test_turn_on_animation_effect(
 ) -> None:
     """An animation effect sends its commonMode mode index."""
     await _turn_on(hass, **{ATTR_EFFECT: "Waves"})
-    mock_client.set_state.assert_awaited_once_with(7, 0, 2, turn_on=True)
+    mock_client.set_state.assert_awaited_once_with(7, 0, 2, turn_on=True, dest=0xEB11)
 
 
 async def test_turn_on_seasonal_effect(
@@ -76,7 +76,7 @@ async def test_turn_on_seasonal_effect(
 ) -> None:
     """A seasonal palette uses its colour index with the fade mode."""
     await _turn_on(hass, **{ATTR_EFFECT: "Autumn"})
-    mock_client.set_state.assert_awaited_once_with(5, 18, 2, turn_on=True)
+    mock_client.set_state.assert_awaited_once_with(5, 18, 2, turn_on=True, dest=0xEB11)
 
 
 async def test_turn_on_show_effect(
@@ -84,7 +84,7 @@ async def test_turn_on_show_effect(
 ) -> None:
     """A holiday 'show' effect is routed through showView."""
     await _turn_on(hass, **{ATTR_EFFECT: "Christmas"})
-    mock_client.set_show.assert_awaited_once_with(0, turn_on=True)
+    mock_client.set_show.assert_awaited_once_with(0, turn_on=True, dest=0xEB11)
     mock_client.set_state.assert_not_awaited()
 
 

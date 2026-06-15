@@ -81,7 +81,16 @@ async def test_device_reuses_client(
     with patch(DEV_DISCOVERY, return_value=[make_info()]):
         await device.set_state(1, 0, 2)
         await device.set_show(0)
-    mock_client.set_state.assert_awaited_once_with(1, 0, 2, turn_on=True)
-    mock_client.set_show.assert_awaited_once_with(0, turn_on=True)
+    mock_client.set_state.assert_awaited_once_with(1, 0, 2, turn_on=True, dest=0xEB11)
+    mock_client.set_show.assert_awaited_once_with(0, turn_on=True, dest=0xEB11)
     # First call constructed the client; the second refreshed its address.
     mock_client.set_ble_device.assert_called_once()
+
+
+def test_device_id_from_name() -> None:
+    """The mesh address is the low 16 bits of the name; non-hex falls back to 0."""
+    from custom_components.lightball.device import _device_id_from_name
+
+    assert _device_id_from_name("LAB00001CEB11") == 0xEB11
+    assert _device_id_from_name("LAB00001EE5D5") == 0xE5D5
+    assert _device_id_from_name("lightballZZZZ") == 0

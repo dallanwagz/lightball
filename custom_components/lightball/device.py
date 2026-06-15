@@ -18,6 +18,17 @@ from lightball_ble import LightBall
 _LOGGER = logging.getLogger(__name__)
 
 
+def _device_id_from_name(name: str) -> int:
+    """Mesh address from the stable name (e.g. ``LAB00001CEB11`` -> ``0xEB11``).
+
+    Returns 0 (broadcast) if the suffix isn't hex, so control still works.
+    """
+    try:
+        return int(name[-4:], 16)
+    except ValueError:
+        return 0
+
+
 class LightBallDevice:
     """Resolve an LED Ball by its stable name and proxy commands to the BLE client."""
 
@@ -25,6 +36,9 @@ class LightBallDevice:
         """Initialize the device wrapper."""
         self.hass = hass
         self.name = name
+        # The mesh address is the low 16 bits of the device name's hex suffix, so a
+        # command reaches only this ball even though all balls share a network key.
+        self.device_id = _device_id_from_name(name)
         self._client: LightBall | None = None
 
     def _current_device(self) -> BLEDevice | None:
@@ -55,18 +69,20 @@ class LightBallDevice:
     async def set_state(
         self, mode: int, color: int, level: int, *, turn_on: bool = True
     ) -> None:
-        """Apply an animation mode + palette colour + brightness."""
+        """Apply an animation mode + palette colour + brightness to this ball only."""
         await self._client_for_current_device().set_state(
-            mode, color, level, turn_on=turn_on
+            mode, color, level, turn_on=turn_on, dest=self.device_id
         )
 
     async def set_show(self, show_sel: int, *, turn_on: bool = True) -> None:
-        """Activate an animated 'show' preset."""
-        await self._client_for_current_device().set_show(show_sel, turn_on=turn_on)
+        """Activate an animated 'show' preset on this ball only."""
+        await self._client_for_current_device().set_show(
+            show_sel, turn_on=turn_on, dest=self.device_id
+        )
 
     async def turn_off(self) -> None:
-        """Turn the ball off."""
-        await self._client_for_current_device().turn_off()
+        """Turn this ball off."""
+        await self._client_for_current_device().turn_off(dest=self.device_id)
 
 
 class LightBallNotFound(RuntimeError):

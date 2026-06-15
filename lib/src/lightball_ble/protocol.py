@@ -88,17 +88,23 @@ def select_payload(txn: int) -> bytes:
     return _data_block(bytes([f | 0xE, 0x00, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0]))
 
 
-def common_mode_payload(mode: int, color: int, level: int, txn: int) -> bytes:
-    """commonMode(mode, color, brightness level 0-4); wire byte = 4 - level."""
-    return _data_block(_vendor(txn, 0x3, mode, color, (4 - level) & 0xFF))
+def common_mode_payload(
+    mode: int, color: int, level: int, txn: int, dest: int = BROADCAST
+) -> bytes:
+    """commonMode(mode, color, brightness level 0-4); wire byte = 4 - level.
+
+    ``dest`` is the mesh destination (0 = broadcast to all balls, otherwise the
+    target ball's device id), so a command reaches only the addressed ball.
+    """
+    return _data_block(_vendor(txn, 0x3, mode, color, (4 - level) & 0xFF), dest)
 
 
-def power_payload(on: bool, txn: int) -> bytes:
+def power_payload(on: bool, txn: int, dest: int = BROADCAST) -> bytes:
     """commonMode power toggle (mode 255 = on, 0 = off)."""
-    return _data_block(_vendor(txn, 0x3, MODE_ON if on else MODE_CLOSE, 0, 0))
+    return _data_block(_vendor(txn, 0x3, MODE_ON if on else MODE_CLOSE, 0, 0), dest)
 
 
-def show_payload(show_sel: int, txn: int, slot: int = 1) -> bytes:
+def show_payload(show_sel: int, txn: int, slot: int = 1, dest: int = BROADCAST) -> bytes:
     """showView (animated preset): cmd nibble 0xA, byte5=slot(1-3), byte6=show index."""
     f = (txn & 0x0F) << 4
     v = bytes(
@@ -115,7 +121,7 @@ def show_payload(show_sel: int, txn: int, slot: int = 1) -> bytes:
             0,
         ]
     )
-    return _data_block(v)
+    return _data_block(v, dest)
 
 
 def split_writes(packet: bytes) -> list[tuple[str, bytes]]:
