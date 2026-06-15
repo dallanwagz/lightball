@@ -1,9 +1,15 @@
 """HA-side glue for the LED Ball: resolve the rotating address and send commands.
 
 The ball advertises a stable local name but rotates its BLE address, so we never
-pin a MAC; we look up the current advertisement by name through Home Assistant's
-Bluetooth manager (which transparently includes ESPHome BT proxies) and hand a
-fresh ``BLEDevice`` to the ``lightball_ble`` client before each command.
+pin a MAC; we look it up by name through Home Assistant's Bluetooth manager (which
+includes ESPHome BT proxies) and hand a fresh ``BLEDevice`` to the ``lightball_ble``
+client, addressing the command to the ball's mesh id.
+
+Some balls ship with a mesh id in the controller class (``0x8000``-``0xBFFF``).
+Such a ball, when it is the directly-connected GATT bridge, re-broadcasts commands
+to the whole mesh and hijacks every other ball. As a *relayed* leaf it behaves
+normally, so we route a controller-class ball's commands through a different,
+device-class ball's connection instead of connecting to it directly.
 """
 
 from __future__ import annotations
@@ -11,27 +17,30 @@ from __future__ import annotations
 import logging
 
 from bleak.backends.device import BLEDevice
+from lightball_ble import LightBall
+
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
-from lightball_ble import LightBall
+
+from .const import NAME_PREFIX
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _device_id_from_name(name: str) -> int:
-    """Mesh device address from the stable name.
+    """Mesh device address = low 16 bits of the name's hex suffix.
 
-    The address is the low 16 bits of the name's hex suffix, forced into the
-    CSRmesh device-address class (top bits ``0xC000``). Without this a name whose
-    suffix lands in ``0x8000``-``0xBFFF`` (the controller/group class) would be
-    treated as a controller and broadcast to every ball instead of addressing one.
-    Examples: ``LAB00001E8B32`` -> ``0x8B32`` -> ``0xCB32``; ``LAB00001CEB11`` ->
-    ``0xEB11`` (already device-class, unchanged). Returns 0 (broadcast) if not hex.
+    e.g. ``LAB00001CEB11`` -> ``0xEB11``. Returns 0 (broadcast) if not hex.
     """
     try:
-        return int(name[-4:], 16) | 0xC000
+        return int(name[-4:], 16)
     except ValueError:
         return 0
+
+
+def _is_device_class(device_id: int) -> bool:
+    """Device-class ids (``0xC000``-``0xFFFF``) are safe to connect to directly."""
+    return device_id & 0xC000 == 0xC000
 
 
 class LightBallDevice:
@@ -41,32 +50,50 @@ class LightBallDevice:
         """Initialize the device wrapper."""
         self.hass = hass
         self.name = name
-        # The mesh address is the low 16 bits of the device name's hex suffix, so a
-        # command reaches only this ball even though all balls share a network key.
         self.device_id = _device_id_from_name(name)
+        # A controller-class ball must not be the connected bridge (it would flood
+        # the mesh), so its commands are routed through a device-class peer.
+        self.needs_bridge = self.device_id != 0 and not _is_device_class(self.device_id)
         self._client: LightBall | None = None
 
-    def _current_device(self) -> BLEDevice | None:
-        """Return the BLEDevice currently advertising under our name (any address)."""
-        for info in bluetooth.async_discovered_service_info(
-            self.hass, connectable=True
-        ):
-            if info.name == self.name:
-                return info.device
-        return None
+    def _visible(self) -> dict[str, BLEDevice]:
+        """Currently-visible LED balls, by stable name."""
+        return {
+            info.name: info.device
+            for info in bluetooth.async_discovered_service_info(self.hass, connectable=True)
+            if info.name and info.name.startswith(NAME_PREFIX)
+        }
 
     @property
     def available(self) -> bool:
-        """Whether the ball is currently visible to HA Bluetooth."""
-        return self._current_device() is not None
+        """Whether this ball is currently visible to HA Bluetooth."""
+        return self.name in self._visible()
+
+    def _connection_target(self) -> tuple[BLEDevice, str] | None:
+        """The (BLEDevice, name) to connect to in order to reach this ball.
+
+        Device-class balls connect to themselves; a controller-class ball is reached
+        through a visible device-class peer (falling back to a direct connection only
+        if no peer is available).
+        """
+        visible = self._visible()
+        if not self.needs_bridge:
+            dev = visible.get(self.name)
+            return (dev, self.name) if dev else None
+        for peer_name, dev in visible.items():
+            if peer_name != self.name and _is_device_class(_device_id_from_name(peer_name)):
+                return (dev, peer_name)
+        dev = visible.get(self.name)  # no peer: fall back to a direct connection
+        return (dev, self.name) if dev else None
 
     def _client_for_current_device(self) -> LightBall:
-        """Return a client bound to the ball's current address."""
-        ble_device = self._current_device()
-        if ble_device is None:
+        """Return a client bound to the right connection target for this ball."""
+        target = self._connection_target()
+        if target is None:
             raise LightBallNotFound(self.name)
+        ble_device, conn_name = target
         if self._client is None:
-            self._client = LightBall(ble_device, self.name)
+            self._client = LightBall(ble_device, conn_name)
         else:
             self._client.set_ble_device(ble_device)
         return self._client

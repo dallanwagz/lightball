@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -88,14 +88,47 @@ async def test_device_reuses_client(
 
 
 def test_device_id_from_name() -> None:
-    """The address is the name's low 16 bits forced into the device class (0xC000)."""
+    """The address is the raw low 16 bits of the name; non-hex falls back to 0."""
     from custom_components.lightball.device import _device_id_from_name
 
-    # Already device-class -> unchanged.
     assert _device_id_from_name("LAB00001CEB11") == 0xEB11
     assert _device_id_from_name("LAB00001EE5D5") == 0xE5D5
-    # Controller/group-class suffix gets lifted into the device class.
-    assert _device_id_from_name("LAB00001E8B32") == 0xCB32
-    assert _device_id_from_name("LAB000000000A") == 0xC00A
-    # Non-hex -> broadcast.
+    assert _device_id_from_name("LAB00001E8B32") == 0x8B32  # controller-class id
     assert _device_id_from_name("lightballZZZZ") == 0
+
+
+async def test_controller_class_routes_through_peer(hass: HomeAssistant) -> None:
+    """A controller-class ball is reached via a device-class peer, addressed to itself."""
+    ball4 = make_info(name="LAB00001E8B32")  # 0x8B32 -> controller class
+    peer = make_info(name="LAB00001CEB11")  # 0xEB11 -> device class
+    device = LightBallDevice(hass, "LAB00001E8B32")
+    assert device.needs_bridge is True
+
+    inst = MagicMock()
+    inst.set_state = AsyncMock()
+    inst.set_ble_device = MagicMock()
+    with (
+        patch(DEV_DISCOVERY, return_value=[ball4, peer]),
+        patch("custom_components.lightball.device.LightBall", return_value=inst) as cls,
+    ):
+        await device.set_state(1, 0, 2)
+
+    # Connected through the peer (bridge), but addressed to ball 4's own id.
+    assert cls.call_args.args[0] is peer.device
+    assert cls.call_args.args[1] == "LAB00001CEB11"
+    inst.set_state.assert_awaited_once_with(1, 0, 2, turn_on=True, dest=0x8B32)
+
+
+async def test_controller_class_falls_back_to_direct(hass: HomeAssistant) -> None:
+    """With no peer visible, a controller-class ball connects to itself directly."""
+    device = LightBallDevice(hass, "LAB00001E8B32")
+    inst = MagicMock()
+    inst.set_state = AsyncMock()
+    inst.set_ble_device = MagicMock()
+    ball4 = make_info(name="LAB00001E8B32")
+    with (
+        patch(DEV_DISCOVERY, return_value=[ball4]),
+        patch("custom_components.lightball.device.LightBall", return_value=inst) as cls,
+    ):
+        await device.set_state(1, 0, 2)
+    assert cls.call_args.args[1] == "LAB00001E8B32"
