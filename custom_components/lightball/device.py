@@ -19,12 +19,17 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _device_id_from_name(name: str) -> int:
-    """Mesh address from the stable name (e.g. ``LAB00001CEB11`` -> ``0xEB11``).
+    """Mesh device address from the stable name.
 
-    Returns 0 (broadcast) if the suffix isn't hex, so control still works.
+    The address is the low 16 bits of the name's hex suffix, forced into the
+    CSRmesh device-address class (top bits ``0xC000``). Without this a name whose
+    suffix lands in ``0x8000``-``0xBFFF`` (the controller/group class) would be
+    treated as a controller and broadcast to every ball instead of addressing one.
+    Examples: ``LAB00001E8B32`` -> ``0x8B32`` -> ``0xCB32``; ``LAB00001CEB11`` ->
+    ``0xEB11`` (already device-class, unchanged). Returns 0 (broadcast) if not hex.
     """
     try:
-        return int(name[-4:], 16)
+        return int(name[-4:], 16) | 0xC000
     except ValueError:
         return 0
 

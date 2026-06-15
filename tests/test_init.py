@@ -88,9 +88,14 @@ async def test_device_reuses_client(
 
 
 def test_device_id_from_name() -> None:
-    """The mesh address is the low 16 bits of the name; non-hex falls back to 0."""
+    """The address is the name's low 16 bits forced into the device class (0xC000)."""
     from custom_components.lightball.device import _device_id_from_name
 
+    # Already device-class -> unchanged.
     assert _device_id_from_name("LAB00001CEB11") == 0xEB11
     assert _device_id_from_name("LAB00001EE5D5") == 0xE5D5
+    # Controller/group-class suffix gets lifted into the device class.
+    assert _device_id_from_name("LAB00001E8B32") == 0xCB32
+    assert _device_id_from_name("LAB000000000A") == 0xC00A
+    # Non-hex -> broadcast.
     assert _device_id_from_name("lightballZZZZ") == 0
